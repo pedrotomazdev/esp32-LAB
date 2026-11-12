@@ -1,4 +1,5 @@
 from time import ticks_diff
+from animacoes import desenhar_logo_nenza
 from config import LINHA_MENU_PX, ROLAGEM_MENU_MS, ANIMACOES, CORES_LED, MUSICAS_BOOT, GRAFICOS, AMOSTRAS, TITULOS, POMODORO_MS
 
 # Cada entrada possui um titulo e o destino. Numeros abrem telas da API.
@@ -10,7 +11,6 @@ MENU = (
     ("REDE", 3),
     ("BATERIA", 4),
     ("DISCO", 5),
-    ("MINIMIZAR NENZA", "minimizar"),
     ("ABRIR CHROME", "chrome"),
     ("NENZAHUB", "nenzahub"),
     ("NENZAHOME", "nenzahome"),
@@ -20,10 +20,12 @@ MENU = (
     ("MODO TRABALHO", "pc"),
     ("CONFIGURACOES", "config"),
     ("GRAFICOS", "graficos"),
+    ("TEMP. AMBIENTE", "temperatura"),
+    ("TELA INICIAL", "painel"),
 )
 ACOES_FAVORITAS = tuple(
     i for i, (_, destino) in enumerate(MENU)
-    if isinstance(destino, str) and destino not in ("pc", "config", "graficos")
+    if isinstance(destino, str) and destino not in ("pc", "config", "graficos", "temperatura", "painel")
 )
 
 # Adaptacoes 8x8 de simbolos Lucide (https://lucide.dev/icons/).
@@ -36,7 +38,6 @@ ICONES_MENU = {
     3: b"\x00\x3c\x42\x00\x18\x24\x00\x18",  # wifi
     4: b"\x00\x00\x7e\x4b\x4b\x7e\x00\x00",  # battery
     5: b"\x00\x3c\x42\x81\xff\x85\xff\x00",  # hard-drive
-    "minimizar": b"\x00\x00\x00\x7e\x7e\x00\x00\x00",  # minus
     "chrome": b"\x3c\x42\x99\xa5\xa5\x99\x42\x3c",  # globe
     "nenzahub": b"\x00\x77\x55\x77\x00\x77\x55\x77",  # layout-grid
     "nenzahome": b"\x18\x24\x42\xff\x42\x5a\x5a\x7e",  # house
@@ -51,7 +52,42 @@ ICONES_MENU = {
     "cor_led": b"\x00\x18\x3c\x7e\x7e\x3c\x18\x00",
     "musica": b"\x0c\x0a\x09\x08\x08\x38\x38\x10",
     "voltar": b"\x00\x10\x20\x7e\x20\x10\x00\x00",  # arrow-left
+    "wifi": b"\x00\x7e\x81\x3c\x42\x18\x00\x18",
+    "temperatura": b"\x18\x24\x24\x24\x24\x42\x42\x3c",
+    "painel": b"\x10\x28\x44\x82\x44\x54\x54\x7c",  # house
 }
+
+# Adaptacoes 8x8 de memory-stick e activity, do Lucide.
+ICONE_RAM = b"\x00\x00\xff\x91\xbd\xff\x54\x00"
+ICONE_PING = b"\x00\x10\x18\x28\xe7\x14\x0c\x08"
+
+
+def desenhar_icone(oled, icone, x, y, cor):
+    for dy, bits in enumerate(icone):
+        for dx in range(8):
+            if bits & (0x80 >> dx):
+                oled.pixel(x + dx, y + dy, cor)
+
+
+def desenhar_painel(oled, amostra, temperatura):
+    ping, _, ram = amostra
+    ram_texto = "--%" if ram is None or not 0 <= ram <= 100 else "{:.0f}%".format(ram)
+    ping_texto = "--ms" if ping is None or ping < 0 else "{:.0f}ms".format(ping)
+    if len(ping_texto) > 6:
+        ping_texto = ">999ms"
+    temperatura = temperatura.replace(" ", "")
+    if len(temperatura) > 5:
+        temperatura = temperatura.split(".", 1)[0] + "C"
+    oled.fill(0)
+    desenhar_icone(oled, ICONE_RAM, 0, 0, 1)
+    desenhar_icone(oled, ICONE_PING, 60, 0, 1)
+    desenhar_icone(oled, ICONES_MENU["temperatura"], 120, 0, 1)
+    oled.text(ram_texto, 0, 9)
+    oled.text(ping_texto, (128 - len(ping_texto) * 8) // 2, 9)
+    oled.text(temperatura, 128 - len(temperatura) * 8, 9)
+    desenhar_logo_nenza(oled, 43, 27)
+    oled.show()
+
 
 def deslocamento_menu(offset, inicio, agora):
     restante = max(0, ROLAGEM_MENU_MS - ticks_diff(agora, inicio))
@@ -61,10 +97,7 @@ def deslocamento_menu(offset, inicio, agora):
 
 def desenhar_item_menu(oled, item, y, cor):
     titulo, destino = item
-    for dy, bits in enumerate(ICONES_MENU[destino]):
-        for x in range(8):
-            if bits & (0x80 >> x):
-                oled.pixel(x, y + dy, cor)
+    desenhar_icone(oled, ICONES_MENU[destino], 0, y, cor)
     oled.text(titulo, 8, y, cor)
 
 
@@ -86,11 +119,16 @@ def desenhar_menu(oled, selecionado, rodape, itens=MENU, offset=0):
     oled.show()
 
 
+CONFIG_WIFI = 4
+CONFIG_VOLTAR = 5
+
+
 def desenhar_config(oled, item, editando, volume, animacao, cor_led, musica_boot):
     if not editando:
         itens = (("VOLUME {}%".format(volume), "volume"),
                  ("ANIMACAO", "animacao"), ("COR LED", "cor_led"),
-                 ("MUSICA BOOT", "musica"), ("VOLTAR", "voltar"))
+                 ("MUSICA BOOT", "musica"), ("CONFIGURAR WIFI", "wifi"),
+                 ("VOLTAR", "voltar"))
         desenhar_menu(oled, item, "1:<  2:>", itens)
         return
 

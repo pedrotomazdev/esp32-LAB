@@ -193,6 +193,14 @@ def copiar_metrica(metrica, destino):
     return revisao, quantidade
 
 
+def ultima_amostra():
+    if trava_historico is not None:
+        with trava_historico:
+            if revisao_historico:
+                return revisao_historico, historico[(revisao_historico - 1) % AMOSTRAS]
+    return 0, (None, None, None)
+
+
 def ler_snapshot(endereco, requisicao):
     api = consultar_api(endereco, requisicao)
     telas = preparar_telas(api)

@@ -6,10 +6,12 @@ Firmware em **MicroPython** para uma **ESP32 DevKit V1** com display OLED SSD130
 
 ## Alterações desta versão
 
+- Tela inicial com a logo Nenza centralizada e indicadores de RAM do servidor, ping e temperatura ambiente no topo. Qualquer botão abre o menu a partir da tela inicial ou do descanso de tela.
+- Temperatura ambiente no menu, nas duas animações e em um gráfico local de 60 amostras. O NTC no GPIO 35 é lido ao iniciar e a cada 15 segundos.
 - Firmware dividido em módulos de configuração, periféricos, telas, animações, monitoramento e transporte HTTP. A thread de rede continua separada do loop do OLED.
 - Gráficos com buffer circular de 60 amostras e reutilização do buffer de desenho. O cliente HTTP fecha o socket antes de decodificar o JSON. O diagnóstico de memória pode ser ativado em `config.py`.
 - Portal Wi-Fi ativado pelo B3 na inicialização. O OLED mostra a rede, a senha temporária e o IP. O formulário salva a configuração em `secrets.json`, com `secrets.py` como reserva.
-- Remoção das opções **Chuck Norris** e **Testar conexão**. Os demais favoritos salvos mantêm a ação original. Se **Testar conexão** era o favorito, o atalho passa a abrir **Ultimate Nenza**. O gráfico de ping do NenzaHub continua disponível.
+- Remoção das opções **Chuck Norris**, **Testar conexão** e **Minimizar Nenza**. Se **Testar conexão** ou **Minimizar Nenza** era o favorito, o atalho passa a abrir **Ultimate Nenza**. Os demais favoritos mantêm a ação original. O gráfico de ping do NenzaHub continua disponível.
 
 ## Funcionalidades
 
@@ -26,7 +28,7 @@ Firmware em **MicroPython** para uma **ESP32 DevKit V1** com display OLED SSD130
 
 Envia comandos HTTP para o serviço **NenzaBuddy**, na porta **8085**, utilizando autenticação por token. O menu inclui ações para:
 
-- Abrir ou minimizar o Ultimate Nenza.
+- Abrir o Ultimate Nenza.
 - Testar a conexão.
 - Abrir Chrome, Brave e Discord.
 - Acionar NenzaHub, NenzaHome e NenzaLab.
@@ -42,7 +44,7 @@ Os nomes dos comandos são enviados conforme os identificadores definidos em `ME
 - Controle de buzzer PWM, com sons de interface, alerta de fim do foco e duas melodias de inicialização.
 - LED RGB de **ânodo comum**, com cores fixas, modo automático por status, arco-íris, polícia, batimento e modo **branco no escuro** com LDR.
 - Temporizador de foco de **25 minutos**.
-- Descanso de tela após **60 segundos** de inatividade, com animação de gatinho ou logotipo **Nenza DVD**.
+- Descanso de tela após **60 segundos** de inatividade. O gatinho é a animação padrão. A seleção de Nenza DVD em **Configurações → Animação** continua disponível.
 
 ## Hardware e pinagem
 
@@ -75,12 +77,13 @@ A tabela reflete **os pinos usados pelo firmware**; confira as ligações físic
 | Contexto | Botão 1 (GPIO27) | Botão 2 (GPIO26) | Botão 3 (GPIO25) |
 | --- | --- | --- | --- |
 | Menu principal | Item anterior | Próximo item | Abrir/confirmar |
-| Gráficos iniciais | Métrica anterior | Próxima métrica | Abrir menu |
+| Tela inicial ou descanso | Abrir menu | Abrir menu | Abrir menu |
+| Gráficos | Métrica anterior | Próxima métrica | Abrir menu |
 | Configurações | Anterior / diminuir | Próximo / aumentar | Editar / confirmar / voltar |
 | Modo foco | — | — | Cancelar / voltar |
 | Ação remota exibida | — | — | Voltar |
 
-**Pressionamento longo do botão 3:** na tela inicial, executa o atalho favorito configurado; no menu principal, quando o item é elegível, define esse item como favorito.
+**Pressionamento longo do botão 3** — Nos gráficos, executa o atalho favorito. No menu principal, define o item selecionado como favorito se ele for um comando elegível.
 
 > O tratamento do botão 3 distingue gestos curtos e longos. Os botões 1 e 2 são tratados como cliques simples.
 
@@ -95,16 +98,23 @@ O código define os seguintes itens, nesta ordem:
 5. REDE
 6. BATERIA
 7. DISCO
-8. MINIMIZAR NENZA
-9. ABRIR CHROME
-10. NENZAHUB
-11. NENZAHOME
-12. NENZALAB
-13. ABRIR BRAVE
-14. ABRIR DISCORD
-15. MODO TRABALHO
-16. CONFIGURACOES
-17. GRAFICOS
+8. ABRIR CHROME
+9. NENZAHUB
+10. NENZAHOME
+11. NENZALAB
+12. ABRIR BRAVE
+13. ABRIR DISCORD
+14. MODO TRABALHO
+15. CONFIGURACOES
+16. GRAFICOS
+17. TEMP. AMBIENTE
+18. TELA INICIAL
+
+### Sensor de temperatura ambiente
+
+O ajuste inicial pressupõe um NTC de 10 kΩ a 25 °C, beta de 3950 K e resistor fixo de 10 kΩ. Ligue o NTC entre 3V3 e GPIO35 e o resistor fixo entre GPIO35 e GND. Se a ligação estiver invertida, ajuste `NTC_LIGADO_A_3V3 = False` em `config.py`. Confirme o beta no datasheet do sensor e ajuste `NTC_BETA_K` se necessário.
+
+O firmware usa `ADC.read_uv()` e mostra `-- C` quando a leitura está fora da faixa calibrada ou indisponível. A temperatura é estimada e o histórico fica em RAM. O gráfico funciona sem Wi-Fi.
 
 **Nota:** o item `MODO TRABALHO` inicia o temporizador de foco local; não é um comando HTTP. O item `GRAFICOS` retorna à visualização inicial dos gráficos.
 
@@ -119,6 +129,7 @@ O código define os seguintes itens, nesta ordem:
 ├── perifericos.py   # Botões, buzzer, NVS e controle do RGB/LDR
 ├── telas.py         # Menu, telas e gráficos
 ├── animacoes.py     # Gatinho e Nenza DVD
+├── temperatura.py   # Leitura do NTC e histórico local
 ├── monitor.py       # Wi-Fi, API, comandos e histórico
 ├── http_json.py     # Transporte HTTP e decodificação JSON
 ├── rede_config.py   # Leitura e gravação da configuração de rede
@@ -138,10 +149,10 @@ O driver `ssd1306.py` deve estar disponível na placa, salvo se já estiver incl
 #### Pelo navegador
 
 1. Envie `rede_config.py`, `portal_config.py` e `index.html` para a raiz da placa junto com o firmware.
-2. Segure o botão B3 ao ligar ou reiniciar a ESP32. Solte quando o OLED mostrar `CONFIG WIFI`.
+2. Abra **Configurações → Configurar Wi-Fi** e confirme com B3. A ESP32 reinicia direto no portal e mostra `CONFIG WIFI` no OLED. Como atalho de recuperação, também é possível segurar B3 ao ligar.
 3. Conecte-se à rede `Nenza-Config` com a senha temporária exibida no OLED. Mantenha a conexão se o celular avisar que a rede está sem internet.
 4. Abra no navegador `http://` seguido do IP exibido no OLED. Preencha o Wi-Fi e a URL HTTP do NenzaHub. Para habilitar comandos do PC, preencha o host e o token juntos.
-5. Toque em **Salvar e reiniciar**. A placa grava `/secrets.json` e reinicia. Se a nova configuração falhar, repita o acesso com B3 e corrija os campos.
+5. Toque em **Salvar e reiniciar**. A placa grava `/secrets.json` e reinicia. Se a nova configuração falhar, volte a **Configurar Wi-Fi** no menu e corrija os campos.
 
 O portal abre antes da thread de monitoramento e fecha ao salvar ou após cinco minutos. A página usa HTTP dentro da rede temporária protegida por WPA2. Os campos começam vazios. Cada envio substitui os cinco valores, e as credenciais ficam armazenadas em texto no sistema de arquivos da placa.
 

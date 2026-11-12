@@ -6,7 +6,12 @@ CICLO_MS = 6400
 CICLO_DVD_MS = 87 * 110 * QUADRO_MS
 
 
-def desenhar_nenza_dvd(oled, fase):
+def desenhar_logo_nenza(oled, x, y):
+    oled.rect(x, y, 42, 10, 1)
+    oled.text("NENZA", x + 1, y + 1)
+
+
+def desenhar_nenza_dvd(oled, fase, temperatura=None):
     quadro = fase // QUADRO_MS
     # Reflete a posicao nos limites de um logo de 42 por 10 pixels.
     x = (10 + 2 * quadro) % 174
@@ -14,12 +19,13 @@ def desenhar_nenza_dvd(oled, fase):
     x = min(x, 173 - x)
     y = min(y, 109 - y)
     oled.fill(0)
-    oled.rect(x, y, 42, 10, 1)
-    oled.text("NENZA", x + 1, y + 1)
+    desenhar_logo_nenza(oled, x, y)
+    if temperatura is not None:
+        oled.text(temperatura, 0, 56 if y < 8 else 0)
     oled.show()
 
 
-def desenhar_gato(oled, fase, dormindo):
+def desenhar_gato(oled, fase, dormindo, temperatura=None):
     if fase < 1500:
         olhar = 0
     elif fase < 3000:
@@ -74,4 +80,6 @@ def desenhar_gato(oled, fase, dormindo):
         subida = fase % 1600 // 100
         oled.text("Z", 67 + subida // 2, 23 - subida, 1)
 
+    if temperatura is not None:
+        oled.text(temperatura, (128 - len(temperatura) * 8) // 2, 0)
     oled.show()

@@ -11,15 +11,16 @@ from config import (
     AMOSTRAS, ANIMACOES, CORES_LED, DEBUG_LDR, GPIO_LDR, GRAFICOS, INATIVIDADE_MS,
     LEITURA_LDR_MS, LIMIAR_CLARO, LIMIAR_ESCURO, LINHA_MENU_PX, LOG_LDR_MS,
     MODO_LDR, POMODORO_MS, QUADRO_LED_MS, QUADRO_MENU_MS, QUADRO_MS, RGB_ATIVO_BAIXO,
-    TOQUE_LONGO_MS,
+    TOQUE_LONGO_MS, GRAFICO_AMBIENTE,
 )
 from animacoes import CICLO_MS, CICLO_DVD_MS, desenhar_gato, desenhar_nenza_dvd
 from perifericos import Botao, Buzzer, ambiente_escuro, atualizar_led_rgb, ler_config, salvar_config
 from telas import (
-    ACOES_FAVORITAS, MENU, deslocamento_menu, desenhar_acao, desenhar_config,
-    desenhar_foco, desenhar_grafico, desenhar_menu, desenhar_tela,
+    ACOES_FAVORITAS, CONFIG_VOLTAR, CONFIG_WIFI, MENU, deslocamento_menu, desenhar_acao, desenhar_config,
+    desenhar_foco, desenhar_grafico, desenhar_menu, desenhar_painel, desenhar_tela,
 )
 import monitor
+from temperatura import TemperaturaAmbiente
 
 if DIAGNOSTICO_MEMORIA:
     medir_memoria("Modulos carregados")
@@ -31,19 +32,25 @@ def main():
     i2c = SoftI2C(sda=Pin(18), scl=Pin(15), freq=400_000)
     oled = SSD1306_I2C(128, 64, i2c, addr=0x3C)
     botoes = (Botao(27), Botao(26), Botao(25))
-    if botoes[2].pin.value() == 0:
-        sleep_ms(TOQUE_LONGO_MS)
-        if botoes[2].pin.value() == 0:
-            try:
-                from portal_config import executar
-                executar(oled)
-            except (ImportError, OSError, ValueError, MemoryError) as erro:
-                print("[CONFIG] Falha no portal:", erro)
-                oled.fill(0)
-                oled.text("ERRO NO PORTAL", 0, 24)
-                oled.show()
-                sleep_ms(1500)
     nvs = NVS("nenza_menu")
+    portal_solicitado = ler_config(nvs, "portal_wifi", 0, 1)
+    abrir_portal = bool(portal_solicitado)
+    if not abrir_portal and botoes[2].pin.value() == 0:
+        sleep_ms(TOQUE_LONGO_MS)
+        abrir_portal = botoes[2].pin.value() == 0
+    if abrir_portal:
+        try:
+            if portal_solicitado:
+                nvs.set_i32("portal_wifi", 0)
+                nvs.commit()
+            from portal_config import executar
+            executar(oled)
+        except (ImportError, OSError, ValueError, MemoryError) as erro:
+            print("[CONFIG] Falha no portal:", erro)
+            oled.fill(0)
+            oled.text("ERRO NO PORTAL", 0, 24)
+            oled.show()
+            sleep_ms(1500)
     buzzer = Buzzer(19, ler_config(nvs, "volume", 70, 100))
     animacao = ler_config(nvs, "animacao", 0, len(ANIMACOES) - 1)
     rgb = tuple(
@@ -61,16 +68,21 @@ def main():
     escuro = False
     selecionado = 0
     no_menu = False
-    inicio = True
+    painel = True
+    inicio = False
     metrica = 0
-    anterior = ler_config(nvs, "favorito", 0, len(ACOES_FAVORITAS))
-    # Na lista anterior, "Testar conexao" ocupava o indice 2.
+    # Na lista original, "Testar conexao" ocupava o indice 2.
+    anterior = ler_config(nvs, "favorito", 0, len(ACOES_FAVORITAS) + 1)
     padrao_favorito = 0 if anterior == 2 else anterior - int(anterior > 2)
-    favorito = ler_config(nvs, "favorito_v2", padrao_favorito, len(ACOES_FAVORITAS) - 1)
+    anterior = ler_config(nvs, "favorito_v2", padrao_favorito, len(ACOES_FAVORITAS))
+    # Na segunda lista, "Minimizar Nenza" ocupava o indice 1.
+    padrao_favorito = max(0, anterior - 1)
+    favorito = ler_config(nvs, "favorito_v3", padrao_favorito, len(ACOES_FAVORITAS) - 1)
     acao_atalho = None
     prazo_foco = None
     segundos_foco = None
     historico_exibido = None
+    painel_exibido = None
     valores_grafico = [None] * AMOSTRAS
     aviso_menu = None
     item_config = None
@@ -87,6 +99,7 @@ def main():
         print("Monitor:", erro)
 
     ultimo_clique = ticks_ms()
+    temperatura = TemperaturaAmbiente(ultimo_clique)
     ultimo_diagnostico = ultimo_clique
     ultimo_quadro = ultimo_clique
     inicio_rolagem = ultimo_clique
@@ -101,6 +114,7 @@ def main():
         buzzer.tocar(Buzzer.SONS_BOOT[musica_boot], ticks_ms())
         while True:
             agora = ticks_ms()
+            temperatura_atualizada = temperatura.atualizar(agora)
             snapshot = monitor.estado
             mudou_cor = cor_led != cor_led_exibida
             cor = CORES_LED[cor_led][1]
@@ -152,10 +166,20 @@ def main():
                 if gesto is not None:
                     print("Botao", indice + 1, "pressionado")
                     ultimo_clique = agora
+                    acordou = descanso
                     descanso = False
                     passo = -1 if indice == 0 else 1
                     redesenhar = True
                     aviso_menu = None
+                    if painel or acordou:
+                        painel = False
+                        inicio = False
+                        no_menu = True
+                        acao_atalho = None
+                        item_config = None
+                        editando = False
+                        buzzer.tocar(Buzzer.SONS[indice], agora)
+                        continue
                     if segundos_foco is not None:
                         if indice == 2 and gesto == "curto":
                             prazo_foco = None
@@ -168,7 +192,7 @@ def main():
                             monitor.acao_pc = (MENU[acao_atalho][1], "EXECUTANDO...")
                         elif item_config is None and no_menu and selecionado in ACOES_FAVORITAS:
                             favorito = ACOES_FAVORITAS.index(selecionado)
-                            salvar_config(nvs, "favorito_v2", favorito)
+                            salvar_config(nvs, "favorito_v3", favorito)
                             aviso_menu = "FAVORITO"
                         continue
                     if acao_atalho is not None:
@@ -193,7 +217,22 @@ def main():
                                 else:
                                     salvar_config(nvs, "musica_boot", musica_boot)
                                 editando = False
-                            elif item_config == 4:
+                            elif item_config == CONFIG_WIFI:
+                                from machine import reset
+
+                                try:
+                                    nvs.set_i32("portal_wifi", 1)
+                                    nvs.commit()
+                                except OSError as erro:
+                                    print("[CONFIG] Falha ao solicitar portal:", erro)
+                                    oled.fill(0)
+                                    oled.text("ERRO AO SALVAR", 0, 24)
+                                    oled.show()
+                                    sleep_ms(1500)
+                                else:
+                                    buzzer.desligar()
+                                    reset()
+                            elif item_config == CONFIG_VOLTAR:
                                 item_config = None
                             else:
                                 editando = True
@@ -201,7 +240,7 @@ def main():
                                     buzzer.tocar(Buzzer.SONS_BOOT[musica_boot], agora)
                                     continue
                         elif not editando:
-                            item_config = (item_config + passo) % 5
+                            item_config = (item_config + passo) % (CONFIG_VOLTAR + 1)
                         elif item_config == 0:
                             buzzer.volume = max(0, min(100, buzzer.volume + passo * 10))
                         elif item_config == 1:
@@ -216,7 +255,14 @@ def main():
                         destino = MENU[selecionado][1]
                         if destino == "config":
                             item_config = 0
+                        elif no_menu and destino == "painel":
+                            painel = True
+                            no_menu = False
                         elif no_menu and destino == "graficos":
+                            inicio = True
+                            no_menu = False
+                        elif no_menu and destino == "temperatura":
+                            metrica = GRAFICO_AMBIENTE
                             inicio = True
                             no_menu = False
                         elif no_menu and destino == "pc":
@@ -256,28 +302,42 @@ def main():
                     ciclo = CICLO_DVD_MS if animacao else CICLO_MS
                     fase = (fase + intervalo) % ciclo if descanso else 0
                     if animacao:
-                        desenhar_nenza_dvd(oled, fase)
+                        desenhar_nenza_dvd(oled, fase, temperatura.rotulo)
                     else:
-                        desenhar_gato(oled, fase, dormindo=snapshot[0] != "LIVE")
+                        desenhar_gato(oled, fase, snapshot[0] != "LIVE", temperatura.rotulo)
                     ultimo_quadro = agora
                     descanso = True
             elif (
                 redesenhar or animar_menu or snapshot is not exibido or resultado_pc is not acao_exibida
-                or (inicio and monitor.revisao_historico != historico_exibido)
+                or (painel and (temperatura_atualizada or monitor.revisao_historico != painel_exibido))
+                or (temperatura_atualizada and menu_visivel and MENU[selecionado][1] == "temperatura")
+                or (inicio and (
+                    temperatura_atualizada if metrica == GRAFICO_AMBIENTE
+                    else monitor.revisao_historico != historico_exibido
+                ))
             ):
                 destino = MENU[selecionado][1]
                 if segundos_foco is not None:
                     desenhar_foco(oled, segundos_foco)
                 elif acao_atalho is not None:
                     desenhar_acao(oled, acao_atalho, resultado_pc[1])
+                elif painel:
+                    painel_exibido, amostra = monitor.ultima_amostra()
+                    desenhar_painel(oled, amostra, temperatura.rotulo)
                 elif inicio:
-                    historico_exibido, quantidade = monitor.copiar_metrica(metrica, valores_grafico)
-                    desenhar_grafico(oled, metrica, valores_grafico, quantidade, snapshot[0])
+                    if metrica == GRAFICO_AMBIENTE:
+                        quantidade = temperatura.copiar(valores_grafico)
+                        conexao_grafico = "LIVE"
+                    else:
+                        historico_exibido, quantidade = monitor.copiar_metrica(metrica, valores_grafico)
+                        conexao_grafico = snapshot[0]
+                    desenhar_grafico(oled, metrica, valores_grafico, quantidade, conexao_grafico)
                 elif item_config is not None:
                     desenhar_config(oled, item_config, editando, buzzer.volume, animacao, cor_led, musica_boot)
                 elif no_menu:
                     offset = deslocamento_menu(offset_menu, inicio_rolagem, agora)
-                    desenhar_menu(oled, selecionado, aviso_menu or snapshot[0], offset=offset)
+                    rodape = temperatura.rotulo if destino == "temperatura" else snapshot[0]
+                    desenhar_menu(oled, selecionado, aviso_menu or rodape, offset=offset)
                     quadro_menu = agora
                     if offset == 0:
                         offset_menu = 0
