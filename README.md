@@ -6,11 +6,12 @@ Firmware em **MicroPython** para uma **ESP32 DevKit V1** com display OLED SSD130
 
 ## Alterações desta versão
 
+- Novos sons para voltar, avançar e confirmar. **From Hell Riff** e **Omnitrix Ativado** também estão disponíveis em **Configurações → Música Boot**, ao lado das duas opções anteriores.
 - Tela inicial com a logo Nenza centralizada e indicadores de RAM do servidor, ping e temperatura ambiente no topo. Qualquer botão abre o menu a partir da tela inicial ou do descanso de tela.
 - Temperatura ambiente no menu, nas duas animações e em um gráfico local de 60 amostras. O NTC no GPIO 35 é lido ao iniciar e a cada 15 segundos.
 - Firmware dividido em módulos de configuração, periféricos, telas, animações, monitoramento e transporte HTTP. A thread de rede continua separada do loop do OLED.
 - Gráficos com buffer circular de 60 amostras e reutilização do buffer de desenho. O cliente HTTP fecha o socket antes de decodificar o JSON. O diagnóstico de memória pode ser ativado em `config.py`.
-- Portal Wi-Fi ativado pelo B3 na inicialização. O OLED mostra a rede, a senha temporária e o IP. O formulário salva a configuração em `secrets.json`, com `secrets.py` como reserva.
+- Portal Wi-Fi acessível em **Configurações → Configurar Wi-Fi** e pelo B3 na inicialização. O OLED mostra a rede, a senha temporária e o IP. O formulário salva a configuração em `secrets.json`, com `secrets.py` como reserva.
 - Remoção das opções **Chuck Norris**, **Testar conexão** e **Minimizar Nenza**. Se **Testar conexão** ou **Minimizar Nenza** era o favorito, o atalho passa a abrir **Ultimate Nenza**. Os demais favoritos mantêm a ação original. O gráfico de ping do NenzaHub continua disponível.
 
 ## Funcionalidades
