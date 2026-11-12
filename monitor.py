@@ -69,6 +69,7 @@ def monitorar_servidor():
     wifi = network.WLAN(network.STA_IF)
     wifi.active(True)
     telas = None
+    proxima_sincronizacao = ticks_ms()
 
     while True:
         try:
@@ -95,6 +96,21 @@ def monitorar_servidor():
             amostra = (None, None, None)
 
         registrar_amostra(amostra)
+        if (
+            proxima_sincronizacao is not None and wifi.isconnected()
+            and ticks_diff(ticks_ms(), proxima_sincronizacao) >= 0
+        ):
+            try:
+                import ntptime
+                ntptime.settime()
+            except ImportError:
+                proxima_sincronizacao = None
+                print("[RELOGIO] Modulo ntptime indisponivel")
+            except (OSError, ValueError, OverflowError, MemoryError) as erro:
+                proxima_sincronizacao = ticks_add(ticks_ms(), 60_000)
+                print("[RELOGIO] Falha NTP:", erro)
+            else:
+                proxima_sincronizacao = ticks_add(ticks_ms(), 3_600_000)
         prazo = ticks_add(ticks_ms(), ATUALIZACAO_MS)
         while ticks_diff(prazo, ticks_ms()) > 0:
             processar_acao_pc(wifi, host_pc, token)

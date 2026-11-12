@@ -1,4 +1,4 @@
-from time import ticks_diff
+from time import gmtime, ticks_diff
 from animacoes import desenhar_logo_nenza
 from config import LINHA_MENU_PX, ROLAGEM_MENU_MS, ANIMACOES, CORES_LED, MUSICAS_BOOT, GRAFICOS, AMOSTRAS, TITULOS, POMODORO_MS
 
@@ -69,7 +69,18 @@ def desenhar_icone(oled, icone, x, y, cor):
                 oled.pixel(x + dx, y + dy, cor)
 
 
-def desenhar_painel(oled, amostra, temperatura):
+def desenhar_relogio(oled, utc):
+    ano, mes, dia, hora, minuto, *_ = gmtime(max(0, utc - 3 * 3600))
+    if ano < 2025:
+        data, horario = "--/--/----", "--:--"
+    else:
+        data = "{:02d}/{:02d}/{:04d}".format(dia, mes, ano)
+        horario = "{:02d}:{:02d}".format(hora, minuto)
+    oled.text(horario, 44, 43)
+    oled.text(data, 24, 54)
+
+
+def desenhar_painel(oled, amostra, temperatura, utc):
     ping, _, ram = amostra
     ram_texto = "--%" if ram is None or not 0 <= ram <= 100 else "{:.0f}%".format(ram)
     ping_texto = "--ms" if ping is None or ping < 0 else "{:.0f}ms".format(ping)
@@ -86,6 +97,7 @@ def desenhar_painel(oled, amostra, temperatura):
     oled.text(ping_texto, (128 - len(ping_texto) * 8) // 2, 9)
     oled.text(temperatura, 128 - len(temperatura) * 8, 9)
     desenhar_logo_nenza(oled, 43, 27)
+    desenhar_relogio(oled, utc)
     oled.show()
 
 

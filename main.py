@@ -6,7 +6,7 @@ if DIAGNOSTICO_MEMORIA:
 
 from machine import ADC, Pin, SoftI2C
 from ssd1306 import SSD1306_I2C
-from time import sleep_ms, ticks_add, ticks_diff, ticks_ms
+from time import sleep_ms, ticks_add, ticks_diff, ticks_ms, time
 from config import (
     AMOSTRAS, ANIMACOES, CORES_LED, DEBUG_LDR, GPIO_LDR, GRAFICOS, INATIVIDADE_MS,
     LEITURA_LDR_MS, LIMIAR_CLARO, LIMIAR_ESCURO, LINHA_MENU_PX, LOG_LDR_MS,
@@ -83,6 +83,7 @@ def main():
     segundos_foco = None
     historico_exibido = None
     painel_exibido = None
+    minuto_exibido = None
     valores_grafico = [None] * AMOSTRAS
     aviso_menu = None
     item_config = None
@@ -294,6 +295,7 @@ def main():
             animar_menu = offset_menu and ticks_diff(agora, quadro_menu) >= QUADRO_MENU_MS
 
             resultado_pc = monitor.acao_pc
+            minuto_painel = time() // 60 if painel and not descanso else None
             if segundos_foco is None and (
                 descanso or ticks_diff(agora, ultimo_clique) >= INATIVIDADE_MS
             ):
@@ -309,7 +311,10 @@ def main():
                     descanso = True
             elif (
                 redesenhar or animar_menu or snapshot is not exibido or resultado_pc is not acao_exibida
-                or (painel and (temperatura_atualizada or monitor.revisao_historico != painel_exibido))
+                or (painel and (
+                    temperatura_atualizada or monitor.revisao_historico != painel_exibido
+                    or minuto_painel != minuto_exibido
+                ))
                 or (temperatura_atualizada and menu_visivel and MENU[selecionado][1] == "temperatura")
                 or (inicio and (
                     temperatura_atualizada if metrica == GRAFICO_AMBIENTE
@@ -323,7 +328,8 @@ def main():
                     desenhar_acao(oled, acao_atalho, resultado_pc[1])
                 elif painel:
                     painel_exibido, amostra = monitor.ultima_amostra()
-                    desenhar_painel(oled, amostra, temperatura.rotulo)
+                    desenhar_painel(oled, amostra, temperatura.rotulo, minuto_painel * 60)
+                    minuto_exibido = minuto_painel
                 elif inicio:
                     if metrica == GRAFICO_AMBIENTE:
                         quantidade = temperatura.copiar(valores_grafico)

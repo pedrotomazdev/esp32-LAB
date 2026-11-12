@@ -6,6 +6,7 @@ Firmware em **MicroPython** para uma **ESP32 DevKit V1** com display OLED SSD130
 
 ## Alterações desta versão
 
+- Data e hora de Brasília abaixo da logo na tela inicial. O relógio sincroniza via NTP quando há internet e mostra traços enquanto a data do RTC ainda estiver indisponível.
 - Novos sons para voltar, avançar e confirmar. **From Hell Riff** e **Omnitrix Ativado** também estão disponíveis em **Configurações → Música Boot**, ao lado das duas opções anteriores.
 - Tela inicial com a logo Nenza centralizada e indicadores de RAM do servidor, ping e temperatura ambiente no topo. Qualquer botão abre o menu a partir da tela inicial ou do descanso de tela.
 - Temperatura ambiente no menu, nas duas animações e em um gráfico local de 60 amostras. O NTC no GPIO 35 é lido ao iniciar e a cada 15 segundos.
