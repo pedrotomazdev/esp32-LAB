@@ -1,8 +1,15 @@
 # Nenza ESP32 — Painel embarcado Nenza Corp
 
-Firmware em **MicroPython** para uma **ESP32 DevKit V1** com display OLED SSD1306 de 128 × 64 pixels, três botões, buzzer, LED RGB e sensor LDR. A placa funciona como painel físico de monitoramento do **NenzaHub** e como controle remoto de ações do **Ultimate Nenza**, além de oferecer gráficos, configurações, modo foco, animações e fatos do Chuck Norris.
+Firmware em **MicroPython** para uma **ESP32 DevKit V1** com display OLED SSD1306 de 128 × 64 pixels, três botões, buzzer, LED RGB e sensor LDR. A placa funciona como painel físico de monitoramento do **NenzaHub** e como controle remoto de ações do **Ultimate Nenza**, além de oferecer gráficos, configurações, modo foco, e animações.
 
-> **Estado desta versão:** implementação monolítica, concentrada em `main.py` (1.039 linhas). Este README documenta o código **antes da modularização**. Não representa uma versão refatorada nem certifica testes em hardware.
+> **Estado desta versão** — Firmware modular com validação em computador. Os testes na ESP32 e as medições de memória estão pendentes.
+
+## Alterações desta versão
+
+- Firmware dividido em módulos de configuração, periféricos, telas, animações, monitoramento e transporte HTTP. A thread de rede continua separada do loop do OLED.
+- Gráficos com buffer circular de 60 amostras e reutilização do buffer de desenho. O cliente HTTP fecha o socket antes de decodificar o JSON. O diagnóstico de memória pode ser ativado em `config.py`.
+- Portal Wi-Fi ativado pelo B3 na inicialização. O OLED mostra a rede, a senha temporária e o IP. O formulário salva a configuração em `secrets.json`, com `secrets.py` como reserva.
+- Remoção das opções **Chuck Norris** e **Testar conexão**. Os demais favoritos salvos mantêm a ação original. Se **Testar conexão** era o favorito, o atalho passa a abrir **Ultimate Nenza**. O gráfico de ping do NenzaHub continua disponível.
 
 ## Funcionalidades
 
@@ -36,11 +43,10 @@ Os nomes dos comandos são enviados conforme os identificadores definidos em `ME
 - LED RGB de **ânodo comum**, com cores fixas, modo automático por status, arco-íris, polícia, batimento e modo **branco no escuro** com LDR.
 - Temporizador de foco de **25 minutos**.
 - Descanso de tela após **60 segundos** de inatividade, com animação de gatinho ou logotipo **Nenza DVD**.
-- Consulta HTTPS à API pública `api.chucknorris.io`, com paginação de fatos adaptados à largura do OLED.
 
 ## Hardware e pinagem
 
-A tabela reflete **os pinos efetivamente declarados no `main.py` enviado**; confira as ligações físicas antes de executar.
+A tabela reflete **os pinos usados pelo firmware**; confira as ligações físicas antes de executar.
 
 | Componente | GPIO | Configuração |
 | --- | --- | --- |
@@ -70,7 +76,6 @@ A tabela reflete **os pinos efetivamente declarados no `main.py` enviado**; conf
 | --- | --- | --- | --- |
 | Menu principal | Item anterior | Próximo item | Abrir/confirmar |
 | Gráficos iniciais | Métrica anterior | Próxima métrica | Abrir menu |
-| Tela de fato do Chuck Norris | Página anterior | Próxima página / buscar novo | Voltar ao menu |
 | Configurações | Anterior / diminuir | Próximo / aumentar | Editar / confirmar / voltar |
 | Modo foco | — | — | Cancelar / voltar |
 | Ação remota exibida | — | — | Voltar |
@@ -91,17 +96,15 @@ O código define os seguintes itens, nesta ordem:
 6. BATERIA
 7. DISCO
 8. MINIMIZAR NENZA
-9. TESTAR CONEXAO
-10. ABRIR CHROME
-11. NENZAHUB
-12. NENZAHOME
-13. NENZALAB
-14. ABRIR BRAVE
-15. ABRIR DISCORD
-16. MODO TRABALHO
-17. CONFIGURACOES
-18. GRAFICOS
-19. CHUCK NORRIS
+9. ABRIR CHROME
+10. NENZAHUB
+11. NENZAHOME
+12. NENZALAB
+13. ABRIR BRAVE
+14. ABRIR DISCORD
+15. MODO TRABALHO
+16. CONFIGURACOES
+17. GRAFICOS
 
 **Nota:** o item `MODO TRABALHO` inicia o temporizador de foco local; não é um comando HTTP. O item `GRAFICOS` retorna à visualização inicial dos gráficos.
 
@@ -111,18 +114,40 @@ O código define os seguintes itens, nesta ordem:
 
 ```text
 /
-├── main.py       # Aplicação completa nesta versão
-├── secrets.py    # Configurações privadas de rede e integração
-└── ssd1306.py    # Driver MicroPython do OLED
+├── main.py          # Entrada, inicialização e loop de interface
+├── config.py        # Constantes e chave de diagnóstico
+├── perifericos.py   # Botões, buzzer, NVS e controle do RGB/LDR
+├── telas.py         # Menu, telas e gráficos
+├── animacoes.py     # Gatinho e Nenza DVD
+├── monitor.py       # Wi-Fi, API, comandos e histórico
+├── http_json.py     # Transporte HTTP e decodificação JSON
+├── rede_config.py   # Leitura e gravação da configuração de rede
+├── portal_config.py # Ponto de acesso e servidor temporários
+├── index.html       # Formulário de configuração
+├── diagnostico.py   # Medições opcionais
+├── secrets.py       # Configurações privadas de rede e integração
+└── ssd1306.py       # Driver MicroPython do OLED
 ```
 
-O `main.py` utiliza módulos integrados ou normalmente disponíveis em builds compatíveis de MicroPython para ESP32: `machine`, `time`, `esp32`, `_thread`, `network`, `socket`, `ssl` e `json`.
+O `main.py` utiliza módulos integrados ou normalmente disponíveis em builds compatíveis de MicroPython para ESP32: `machine`, `time`, `esp32`, `_thread`, `network`, `socket` e `json`.
 
 O driver `ssd1306.py` deve estar disponível na placa, salvo se já estiver incluído no firmware utilizado.
 
 ### Configuração privada
 
-Crie um arquivo `secrets.py` com os nomes de configuração esperados pelo programa:
+#### Pelo navegador
+
+1. Envie `rede_config.py`, `portal_config.py` e `index.html` para a raiz da placa junto com o firmware.
+2. Segure o botão B3 ao ligar ou reiniciar a ESP32. Solte quando o OLED mostrar `CONFIG WIFI`.
+3. Conecte-se à rede `Nenza-Config` com a senha temporária exibida no OLED. Mantenha a conexão se o celular avisar que a rede está sem internet.
+4. Abra no navegador `http://` seguido do IP exibido no OLED. Preencha o Wi-Fi e a URL HTTP do NenzaHub. Para habilitar comandos do PC, preencha o host e o token juntos.
+5. Toque em **Salvar e reiniciar**. A placa grava `/secrets.json` e reinicia. Se a nova configuração falhar, repita o acesso com B3 e corrija os campos.
+
+O portal abre antes da thread de monitoramento e fecha ao salvar ou após cinco minutos. A página usa HTTP dentro da rede temporária protegida por WPA2. Os campos começam vazios. Cada envio substitui os cinco valores, e as credenciais ficam armazenadas em texto no sistema de arquivos da placa.
+
+#### Pelo arquivo Python
+
+Na ausência de uma configuração JSON válida, o firmware usa o `secrets.py` existente. Para configurar manualmente por esse arquivo, use estes campos:
 
 ```python
 WIFI_SSID = "NOME_DA_REDE"
@@ -170,25 +195,40 @@ Este JSON é **ilustrativo**, elaborado a partir dos campos acessados pelo códi
 
 ## Instalação e execução
 
-1. Instale uma versão de MicroPython compatível com sua ESP32.
-2. Conecte a placa ao computador e abra o Thonny ou ferramenta equivalente.
-3. Envie `ssd1306.py` e `secrets.py` para o sistema de arquivos da ESP32.
-4. Envie `main.py` para a raiz do sistema de arquivos.
-5. Reinicie a placa. O bloco `if __name__ == "__main__": main()` inicia a aplicação.
-6. Confira no terminal a mensagem de inicialização e os logs de rede.
+1. Conecte a placa via USB, interrompa o firmware com Ctrl+C e confirme que o REPL está acessível. Use o Thonny ou uma ferramenta equivalente.
+2. Copie para o computador o `main.py` funcional, o driver e os demais arquivos da placa. Guarde a cópia de `secrets.py` em local privado. Registre a versão do MicroPython e confira o espaço com `os.statvfs("/")`.
+3. Envie primeiro os novos módulos listados acima. Mantenha as cópias de `secrets.py` e `ssd1306.py` já instaladas, se funcionais. Envie o novo ponto de entrada como `main_novo.py`.
+4. No REPL, execute `import main_novo; main_novo.main()` e faça os testes abaixo. Após o teste, interrompa a aplicação e faça um reset para encerrar a thread de teste antes de executar novamente. O reset ainda inicializará o firmware anterior.
+5. Com a nova versão validada, interrompa o firmware anterior, renomeie `main.py` para `main_anterior.py` e `main_novo.py` para `main.py`. Reinicie a placa e valide a inicialização automática.
+6. Para restaurar, interrompa o novo firmware pelo REPL, renomeie o novo `main.py` e devolva `main_anterior.py` ao nome `main.py`. Reinicie. O procedimento usa o sistema de arquivos e preserva o firmware MicroPython e a NVS.
 
-**Importante:** esta versão pode exigir memória livre suficiente para compilar/carregar o `main.py`. Se houver `MemoryError` ou erro de armazenamento, registre a mensagem exata antes de apagar arquivos ou firmware.
+### Validação na placa
+
+- Inicialize a frio e confira OLED, música, botões, toques longos, favoritos, menu e rolagem.
+- Percorra as telas e os gráficos. Deixe o histórico ultrapassar 60 amostras e confira a ordem, lacunas em falhas e a reconexão Wi-Fi.
+- Teste os comandos remotos em um PC autorizado. Verifique a resposta dos controles durante uma consulta lenta.
+- Teste Pomodoro, animações, RGB e LDR. Reinicie para confirmar a persistência das configurações NVS.
+
+### Memória e compatibilidade
+
+- **Flash** — `os.statvfs("/")` mede o espaço do sistema de arquivos. Confira-o antes de transferir a versão de teste e manter a cópia anterior na placa.
+- **Compilação no boot** — Cada arquivo fonte é compilado separadamente no import. Módulos menores podem diminuir o pico do compilador. O heap necessário para manter todos os módulos depende do build e do carregamento. Se o pico ocorrer antes da primeira linha de `main.py`, use uma medição no REPL antes de importar o ponto de entrada.
+- **Execução** — Pilha da thread, corpo HTTP, árvore JSON e snapshots coexistentes são candidatos a picos. O limite do corpo continua em 16 KiB. Uma linha de cabeçalho ainda usa `readline()`, e o caminho chunked ainda converte o buffer para bytes antes do parse.
+- **Medição** — Ative `DIAGNOSTICO_MEMORIA` em `config.py` para registrar heap e flash na inicialização, heap após imports, Wi-Fi, API local e a cada minuto no loop. Os pontos durante o loop amostram o heap sem coleta. Compare a versão original e a nova na mesma placa, com o mesmo build, endpoints e ações. Registre heap antes/depois dos mesmos eventos e falhas observadas. Os logs são amostras do heap MicroPython e podem perder o pico durante compilação. Também não medem diretamente a pilha nativa ou o heap do ESP-IDF.
+- **Pré-compilação** — Se o gargalo for a compilação no dispositivo, confira `sys.implementation._mpy` e use o `mpy-cross` compatível com o build da placa. Valide os módulos `.mpy` separadamente e mantenha `main.py` como ponto de entrada. A entrega usa fonte. As constantes continuam em um módulo compartilhado. A aplicação de `const()` merece medição no build alvo, especialmente para valores importados por vários módulos.
 
 ## Funcionamento interno
 
 A aplicação combina dois fluxos principais:
 
 - **Loop de interface (`main`)**: inicializa OLED, botões, NVS, buzzer, RGB e LDR; lê entradas, atualiza estados e redesenha telas conforme necessário.
-- **Thread de monitoramento (`atualizar_servidor` / `monitorar_servidor`)**: conecta ao Wi-Fi, consulta periodicamente a API local, atualiza telas e histórico, processa comandos remotos e busca fatos do Chuck Norris quando solicitados.
+- **Thread de monitoramento (`atualizar_servidor` / `monitorar_servidor`)**: conecta ao Wi-Fi, consulta periodicamente a API local, atualiza telas e histórico, e processa comandos remotos.
 
-As duas partes compartilham estados globais, incluindo `estado`, `historico`, `acao_pc` e `fato_chuck`.
+O monitor publica snapshots e mensagens como tuplas. O histórico tem 60 posições em um buffer circular, e a interface copia somente a série exibida para uma lista reutilizada. A trava cobre a escrita e a cópia do histórico. A renderização ocorre após a liberação da trava. O JSON bruto da API fica limitado à função que prepara o snapshot.
 
-O cliente HTTP implementado em `consultar_api()` aceita respostas JSON com `Content-Length` e também transferência `chunked`, com limite de corpo de **16.384 bytes**. Para a API do Chuck Norris, usa HTTPS e resolve `api.chucknorris.io` na porta 443.
+A thread mantém as operações bloqueantes de Wi-Fi, DNS, e HTTP fora do loop do OLED. Uma migração para `uasyncio` exigiria operações de rede cooperativas para preservar essa separação. O custo da pilha da thread continua presente.
+
+O cliente HTTP implementado em `consultar_api()` aceita respostas JSON com `Content-Length` e também transferência `chunked`, com limite de corpo de **16.384 bytes**.
 
 ## Configurações e valores padrão
 
@@ -216,7 +256,7 @@ Configurações salvas em NVS podem substituir os valores iniciais.
 - **Concorrência:** o monitoramento usa `_thread` e compartilha variáveis com a interface; futuras mudanças devem preservar consistência e responsividade.
 - **Rede bloqueante:** DNS, conexões e leitura de respostas podem bloquear a thread de monitoramento até o timeout configurado.
 - **Limite de JSON:** respostas maiores que 16 KB são rejeitadas.
-- **Dependência externa:** comandos de PC exigem o serviço NenzaBuddy; monitoramento exige API compatível; fatos do Chuck Norris exigem acesso à internet e suporte TLS no firmware.
+- **Dependência externa:** comandos de PC exigem o serviço NenzaBuddy; monitoramento exige API compatível.
 - **Logs:** `DEBUG_LDR = True` habilita mensagens periódicas no terminal quando o modo LDR está ativo.
 - **Atualização segura:** mantenha uma cópia funcional antes de refatorar ou substituir arquivos.
 

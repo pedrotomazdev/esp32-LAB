@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Configuração Nenza</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#10151d;color:#eef3f9;font:16px system-ui,sans-serif}main{max-width:34rem;margin:auto;padding:2rem 1rem}h1{font-size:1.7rem;margin:0 0 1.5rem}fieldset{border:1px solid #415064;border-radius:.5rem;margin:0 0 1rem;padding:1rem}label{display:block;margin:.6rem 0}input,button{width:100%;font:inherit;padding:.65rem;border-radius:.3rem}input{margin-top:.3rem;border:1px solid #64748b;background:#202a38;color:inherit}button{border:0;background:#9ad7ff;color:#0a1726;font-weight:700}p{line-height:1.4}
+</style>
+<main>
+<h1>Configuração Nenza</h1>
+<form id="config" method="post" action="/config">
+<fieldset><legend>Wi-Fi</legend>
+<label>Nome da rede<input name="WIFI_SSID" maxlength="32" required></label>
+<label>Senha<input type="password" name="WIFI_PASSWORD" maxlength="64" autocomplete="new-password"></label>
+</fieldset>
+<fieldset><legend>NenzaHub</legend>
+<label>URL da API<input type="url" name="API_URL" placeholder="http://192.168.1.10:8080/api/health" maxlength="256" required></label>
+</fieldset>
+<fieldset><legend>Comandos do PC (opcional)</legend>
+<label>Host ou IP<input name="NENZA_HOST" maxlength="253" autocapitalize="off"></label>
+<label>Token<input type="password" name="NENZA_TOKEN" maxlength="512" autocomplete="new-password"></label>
+</fieldset>
+<button>Salvar e reiniciar</button>
+<p id="status" role="status"></p>
+</form>
+</main>
+<script>
+const form = document.querySelector('form');
+const button = form.querySelector('button');
+const statusText = document.querySelector('#status');
+form.addEventListener('submit', async event => {
+  event.preventDefault();
+  button.disabled = true;
+  statusText.textContent = 'Salvando…';
+  try {
+    const response = await fetch('/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(Object.fromEntries(new FormData(form)))
+    });
+    statusText.textContent = await response.text();
+    if (response.ok) {
+      form.reset();
+      return;
+    }
+  } catch {
+    statusText.textContent = 'A conexão caiu. Confira o OLED antes de tentar novamente.';
+  }
+  button.disabled = false;
+});
+</script>
+</html>
